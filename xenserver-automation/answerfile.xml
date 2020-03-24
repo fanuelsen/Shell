@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<installation srtype="ext" mode="fresh">
+<primary-disk gueststorage="yes">sda</primary-disk>
+<keymap>no</keymap>
+<root-password></root-password>
+<source type="url">http://0.0.0.0/</source>
+<admin-interface proto="dhcp" name="eth2"/>
+<name-server>0.0.0.0</name-server>
+<timezone>Europe/Oslo</timezone>
+<time-config-method>ntp</time-config-method>
+<ntp-server>0.0.0.0</ntp-server>
+<script type="url" stage="filesystem-populated">http://0.0.0.0/post-install-script.sh</script>
+</installation>

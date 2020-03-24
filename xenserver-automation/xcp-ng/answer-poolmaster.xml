@@ -1,0 +1,12 @@
+<?xml version="1.0"?> 
+<installation mode="fresh" srtype="ext"> 
+  <primary-disk gueststorage="yes">sda</primary-disk> 
+  <keymap>no</keymap> 
+  <root-password>pleasechangeme</root-password>
+  <source type="url">https://updates.xcp-ng.org/netinstall/latest/</source> 
+  <admin-interface name="eth2" proto="dhcp"/> 
+  <timezone>Europe/Oslo</timezone> 
+  <time-config-method>ntp</time-config-method> 
+  <ntp-server>0.no.pool.ntp.org</ntp-server> 
+  <script stage="filesystem-populated" type="url">http://0.0.0.0/xcp-ng/files/post-install-poolmaster.sh</script> 
+</installation>
