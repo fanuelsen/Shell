@@ -11,7 +11,7 @@ dnf install docker-ce --nobest -y
 dnf install grubby -y
 grubby --update-kernel=ALL  --args="systemd.unified_cgroup_hierarchy=0"
 systemctl start docker
-systemctl enabledocker
+systemctl enable docker
 compose_location="/usr/local/bin/docker-compose"
 compose_latest=$(curl --silent "https://api.github.com/repos/docker/compose/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
 curl -L "https://github.com/docker/compose/releases/download/${compose_latest}/docker-compose-$(uname -s)-$(uname -m)" -o ${compose_location} && chmod +x ${compose_location}
