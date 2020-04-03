@@ -1,0 +1,5 @@
+nmcli connection modify guid IPv4.address static_IP/24
+nmcli connection modify guid IPv4.address 192.168.10.0/24
+nmcli connection modify guid IPv4.gateway 192.168.10.2
+nmcli connection modify guid IPv4.dns 8.8.8.8
+nmcli connection modify guid IPv4.method manual
