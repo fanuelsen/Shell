@@ -9,12 +9,12 @@ set -e
 #set -o pipefail
 
 # ensure we only use apk repositories over HTTPS (altough APK contain an embedded signature)
-echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/main" > /etc/apk/repositories \
-  && echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/community" >> /etc/apk/repositories
+#echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/main" > /etc/apk/repositories \
+#  && echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/community" >> /etc/apk/repositories
 
 # Update base system
-apk update
-apk add --no-cache ca-certificates
+#apk update
+#apk add --no-cache ca-certificates
 
 # Add custom user and setup home directory
 adduser -s /bin/true -u 1000 -D -h $APP_DIR $APP_USER \
