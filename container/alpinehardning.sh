@@ -6,7 +6,7 @@
 
 # fail if a command fails
 set -e
-set -o pipefail
+#set -o pipefail
 
 # ensure we only use apk repositories over HTTPS (altough APK contain an embedded signature)
 echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/main" > /etc/apk/repositories \
