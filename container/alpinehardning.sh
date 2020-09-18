@@ -1,134 +1,92 @@
-#!/bin/sh
-set -x
+#!/usr/bin/env sh
+
+# Acknowledgements:
+# Most of this file was derived from https://github.com/ironPeakServices/iron-alpine/blob/master/Dockerfile
+# with some additions from https://medium.com/asos-techblog/minimising-your-attack-surface-by-building-highly-specialised-docker-images-example-for-net-b7bb177ab647
+
+# fail if a command fails
 set -e
-#
-# Docker build calls this script to harden the image during build.
-#
-# NOTE: To build on CircleCI, you must take care to keep the `find`
-# command out of the /proc filesystem to avoid errors like:
-#
-#    find: /proc/tty/driver: Permission denied
-#    lxc-start: The container failed to start.
-#    lxc-start: Additional information can be obtained by \
-#        setting the --logfile and --logpriority options.
+set -o pipefail
 
-adduser -D -s /bin/sh -u 1000 user
-sed -i -r 's/^user:!:/user:x:/' /etc/shadow
+# ensure we only use apk repositories over HTTPS (altough APK contain an embedded signature)
+echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/main" > /etc/apk/repositories \
+  && echo "https://alpine.global.ssl.fastly.net/alpine/v$(cut -d . -f 1,2 < /etc/alpine-release)/community" >> /etc/apk/repositories
 
-# Avoid error `Only root may specify -c or -f` when using
-# ForceCommand with `-f` option at non-root ssh login.
-# https://www.duosecurity.com/docs/duounix-faq#can-i-use-login_duo-to-protect-non-root-shared-accounts,-or-can-i-do-an-install-without-root-privileges?
-chmod u-s /usr/sbin/login_duo
+# Update base system
+apk update
+apk add --no-cache ca-certificates
 
-# /etc/duo/login_duo.conf must be readable only by user 'user'.
-chown user:user /etc/duo/login_duo.conf
-chmod 0400 /etc/duo/login_duo.conf
-
-# Ensure strict ownership and perms.
-chown root:root /usr/bin/github_pubkeys
-chmod 0555 /usr/bin/github_pubkeys
-
-# Be informative after successful login.
-echo -e "\n\nApp container image built on $(date)." > /etc/motd
-
-# Improve strength of diffie-hellman-group-exchange-sha256 (Custom DH with SHA2).
-# See https://stribika.github.io/2015/01/04/secure-secure-shell.html
-#
-# Columns in the moduli file are:
-# Time Type Tests Tries Size Generator Modulus
-#
-# This file is provided by the openssh package on Fedora.
-moduli=/etc/ssh/moduli
-if [[ -f ${moduli} ]]; then
-  cp ${moduli} ${moduli}.orig
-  awk '$5 >= 2000' ${moduli}.orig > ${moduli}
-  rm -f ${moduli}.orig
-fi
+# Add custom user and setup home directory
+adduser -s /bin/true -u 1000 -D -h $APP_DIR $APP_USER \
+  && chown -R "$APP_USER" "$APP_DIR" \
+  && chmod 700 "$APP_DIR"
 
 # Remove existing crontabs, if any.
-rm -fr /var/spool/cron
-rm -fr /etc/crontabs
-rm -fr /etc/periodic
+rm -fr /var/spool/cron \
+  && rm -fr /etc/crontabs \
+  && rm -fr /etc/periodic
 
 # Remove all but a handful of admin commands.
-find /sbin /usr/sbin ! -type d \
-  -a ! -name login_duo \
-  -a ! -name nologin \
-  -a ! -name setup-proxy \
-  -a ! -name sshd \
-  -a ! -name start.sh \
+find /sbin /usr/sbin \
+  ! -type d -a ! -name apk -a ! -name ln \
   -delete
 
-# Remove world-writable permissions.
-# This breaks apps that need to write to /tmp,
-# such as ssh-agent.
-find / -xdev -type d -perm +0002 -exec chmod o-w {} +
-find / -xdev -type f -perm +0002 -exec chmod o-w {} +
+# Remove world-writeable permissions except for /tmp/
+find / -xdev -type d -perm +0002 -exec chmod o-w {} + \
+  && find / -xdev -type f -perm +0002 -exec chmod o-w {} + \
+  && chmod 777 /tmp/ \
+  && chown $APP_USER:root /tmp/
 
-# Remove unnecessary user accounts.
-sed -i -r '/^(user|root|sshd)/!d' /etc/group
-sed -i -r '/^(user|root|sshd)/!d' /etc/passwd
+# Remove unnecessary accounts, excluding current app user and root
+sed -i -r "/^($APP_USER|root|nobody)/!d" /etc/group \
+  && sed -i -r "/^($APP_USER|root|nobody)/!d" /etc/passwd
 
-# Remove interactive login shell for everybody but user.
-sed -i -r '/^user:/! s#^(.*):[^:]*$#\1:/sbin/nologin#' /etc/passwd
+# Remove interactive login shell for everybody
+sed -i -r 's#^(.*):[^:]*$#\1:/sbin/nologin#' /etc/passwd
 
-sysdirs="
-  /bin
-  /etc
-  /lib
-  /sbin
-  /usr
-"
+# Disable password login for everybody
+while IFS=: read -r username _; do passwd -l "$username"; done < /etc/passwd || true
 
-# Remove apk configs.
-find $sysdirs -xdev -regex '.*apk.*' -exec rm -fr {} +
+# Remove apk configs
+find /bin /etc /lib /sbin /usr \
+ -xdev -type f -regex '.*apk.*' \
+ ! -name apk \
+ -exec rm -fr {} +
 
-# Remove crufty...
-#   /etc/shadow-
-#   /etc/passwd-
-#   /etc/group-
-find $sysdirs -xdev -type f -regex '.*-$' -exec rm -f {} +
+# Remove temp shadow,passwd,group
+find /bin /etc /lib /sbin /usr -xdev -type f -regex '.*-$' -exec rm -f {} +
 
 # Ensure system dirs are owned by root and not writable by anybody else.
-find $sysdirs -xdev -type d \
+find /bin /etc /lib /sbin /usr -xdev -type d \
   -exec chown root:root {} \; \
   -exec chmod 0755 {} \;
 
-# Remove all suid files.
-find $sysdirs -xdev -type f -a -perm +4000 -delete
+# Remove suid & sgid files
+find /bin /etc /lib /sbin /usr -xdev -type f -a \( -perm +4000 -o -perm +2000 \) -delete
 
-# Remove other programs that could be dangerous.
-find $sysdirs -xdev \( \
+# Remove dangerous commands
+find /bin /etc /lib /sbin /usr -xdev \( \
   -name hexdump -o \
   -name chgrp -o \
-  -name chmod -o \
   -name chown -o \
   -name ln -o \
   -name od -o \
   -name strings -o \
   -name su \
+  -name sudo \
   \) -delete
 
 # Remove init scripts since we do not use them.
-rm -fr /etc/init.d
-rm -fr /lib/rc
-rm -fr /etc/conf.d
-rm -fr /etc/inittab
-rm -fr /etc/runlevels
-rm -fr /etc/rc.conf
+rm -fr /etc/init.d /lib/rc /etc/conf.d /etc/inittab /etc/runlevels /etc/rc.conf /etc/logrotate.d
 
-# Remove kernel tunables since we do not need them.
-rm -fr /etc/sysctl*
-rm -fr /etc/modprobe.d
-rm -fr /etc/modules
-rm -fr /etc/mdev.conf
-rm -fr /etc/acpi
+# Remove kernel tunables
+rm -fr /etc/sysctl* /etc/modprobe.d /etc/modules /etc/mdev.conf /etc/acpi
 
-# Remove root homedir since we do not need it.
+# Remove root home dir
 rm -fr /root
 
-# Remove fstab since we do not need it.
+# Remove fstab
 rm -f /etc/fstab
 
-# Remove broken symlinks (because we removed the targets above).
-find $sysdirs -xdev -type l -exec test ! -e {} \; -delete
+# Remove any symlinks that we broke during previous steps
+find /bin /etc /lib /sbin /usr -xdev -type l -exec test ! -e {} \; -delete
